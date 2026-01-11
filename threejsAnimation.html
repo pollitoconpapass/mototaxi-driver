@@ -5,7 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/png" href="../imgs/lifeflow_favicon.png">
-    <title>Lifeflow - Animacion de Ruta</title>
+    <title>Mototaxi Driver - Animacion de Ruta</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <style>
         body {
@@ -233,26 +233,22 @@
         <div id="completionModal">
             <div id="completionContent">
                 <div class="completion-title">¡LLEGASTE!</div>
-                <div class="completion-message">🏥 Has llegado al destino exitosamente 🚑</div>
+                <div class="completion-message">Has llegado al destino exitosamente</div>
                 
-                <div class="completion-stats">
-                    <div class="stat-item">
-                        <span>⏱️ Tiempo total:</span>
-                        <span id="totalTime">--:--</span>
-                    </div>
-                    <div class="stat-item">
-                        <span>📍 Waypoints completados:</span>
-                        <span id="waypointsCompleted">-/-</span>
-                    </div>
-                    <div class="stat-item">
-                        <span>🏃 Velocidad promedio:</span>
-                        <span id="avgSpeed">-- km/h</span>
-                    </div>
-                </div>
-                
-                <button class="restart-button" onclick="restartRoute()">
-                    🔄 Reiniciar Ruta
-                </button>
+                        <div class="completion-stats">
+                            <div class="stat-item">
+                                <span>⏱️ Tiempo total:</span>
+                                <span id="totalTime">--:--</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>📍 Waypoints completados:</span>
+                                <span id="waypointsCompleted">-/-</span>
+                            </div>
+                            <div class="stat-item">
+                                <span>🏃 Velocidad promedio:</span>
+                                <span id="avgSpeed">-- km/h</span>
+                            </div>
+                        </div>                
             </div>
         </div>
     </div>
@@ -374,13 +370,11 @@
     <script src="./js/animations/core/Game.js"></script>
     <script src="./js/animations/environment/Buildings.js"></script>
     <script src="./js/animations/environment/Lightning.js"></script>
-    <script src="./js/animations/entities/DriverManager.js"></script>
-    <script src="./js/animations/entities/EmergencyLane.js"></script>
     <script src="./js/animations/entities/TrafficManager.js"></script>
     <script src="./js/animations/entities/Road.js"></script>
-    <script src="./js/animations/entities/Ambulance.js"></script>
+    <script src="./js/animations/entities/MotoTaxi.js"></script>
     <script src="./js/animations/entities/TrafficCars.js"></script>
-    <script src="./js/animations/environment/HospitalFinal.js"></script>
+    <script src="./js/animations/environment/DestinationPinFinal.js"></script>
     <script src="./js/animateRoute.js"></script>
 </body>
 </html>
