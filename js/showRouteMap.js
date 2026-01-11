@@ -1,239 +1,163 @@
-// Inicializar el mapa centrado en Lima
-const map = L.map('map').setView([-12.0464, -77.0428], 13);
+let map;
+let routeLayer;
+let startMarker;
+let endMarker;
+let routeDataForGame = null;
 
-// Agregar capa de mapa de OpenStreetMap
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors',
-    maxZoom: 19
-}).addTo(map);
+document.addEventListener('DOMContentLoaded', function() {
+    const params = new URLSearchParams(window.location.search);
+    const startLat = params.get('startLat');
+    const startLon = params.get('startLon');
+    const destLat = params.get('destLat');
+    const destLon = params.get('destLon');
+    const startName = params.get('start');
+    const destName = params.get('dest');
 
+    document.getElementById('displayStart').textContent = startName || 'No especificado';
+    document.getElementById('displayEnd').textContent = destName || 'No especificado';
 
-// Función principal para calcular ambas rutas
-async function calculateRoute() {
-    const startLocation = document.getElementById('startLocation').value.trim();
-    const endLocation = document.getElementById('endLocation').value.trim();
+    if (startLat && startLon && destLat && destLon) {
+        initMap([startLat, startLon], [destLat, destLon]);
+        fetchRoute([startLat, startLon], [destLat, destLon]);
+    } else {
+        alert('No se proporcionaron las coordenadas de inicio y destino.');
+        initMap([-12.046374, -77.042793], [-12.046374, -77.042793]); // Lima center fallback
+    }
     
-    // Validar inputs
-    if (!startLocation || !endLocation) {
-        showMessage('Por favor ingresa tanto la ubicación de inicio como la de destino.', 'error');
+    document.getElementById('view3D').addEventListener('click', () => {
+        if (routeDataForGame) {
+            sessionStorage.setItem('routeData', JSON.stringify(routeDataForGame));
+            window.location.href = 'threejsAnimation.html';
+        } else {
+            alert('Los datos de la ruta aún no están listos para la simulación.');
+        }
+    });
+});
+
+function initMap(startCoords, destCoords) {
+    map = L.map('map').setView(startCoords, 13);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
+    }).addTo(map);
+
+    const startIcon = L.divIcon({
+        className: 'custom-div-icon',
+        html: "<div style='background-color:#00ff88;' class='marker-pin'></div><i>S</i>",
+        iconSize: [30, 42],
+        iconAnchor: [15, 42]
+    });
+
+    const endIcon = L.divIcon({
+        className: 'custom-div-icon',
+        html: "<div style='background-color:#ff0080;' class='marker-pin'></div><i>D</i>",
+        iconSize: [30, 42],
+        iconAnchor: [15, 42]
+    });
+
+    startMarker = L.marker(startCoords, { icon: startIcon }).addTo(map);
+    endMarker = L.marker(destCoords, { icon: endIcon }).addTo(map);
+
+    map.fitBounds([startCoords, destCoords], { padding: [50, 50] });
+}
+
+async function fetchRoute(startCoords, destCoords) {
+    const url = `https://router.project-osrm.org/route/v1/driving/${startCoords[1]},${startCoords[0]};${destCoords[1]},${destCoords[0]}?overview=full&geometries=geojson&steps=true`;
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to fetch route');
+        
+        const data = await response.json();
+        if (data.routes && data.routes.length > 0) {
+            const route = data.routes[0];
+            routeDataForGame = convertOSRMToGameFormat(route, document.getElementById('displayStart').textContent, document.getElementById('displayEnd').textContent);
+            
+            displayRoute(route.geometry);
+            displayInstructions(route.legs[0].steps);
+            document.getElementById('view3D').style.display = 'inline-flex';
+        } else {
+            alert('No se pudo encontrar una ruta.');
+        }
+    } catch (error) {
+        console.error('Error fetching route:', error);
+        alert('Error al calcular la ruta. Verifique la consola para más detalles.');
+    }
+}
+
+function convertOSRMToGameFormat(route, startName, endName) {
+    const steps = route.legs[0].steps;
+    const totalDistance = route.distance;
+
+    return steps.map((step, index) => {
+        const stepCoords = step.geometry.coordinates;
+        const fromCoords = stepCoords[0];
+        const toCoords = stepCoords[stepCoords.length - 1];
+
+        return {
+            paso: index + 1,
+            desde: index === 0 ? startName : steps[index - 1].name || 'Calle sin nombre',
+            hasta: step.name || 'Calle sin nombre',
+            fromCoords: [fromCoords[1], fromCoords[0]], // OSRM is Lng,Lat -> Game is Lat,Lng
+            toCoords: [toCoords[1], toCoords[0]],
+            nombreCalle: step.name || 'N/A',
+            tipoCalle: 'N/A',
+            unidireccional: 'N/A',
+            distancia_metros: step.distance,
+            distanciaLineaRectaAlDestino: 0, // Placeholder
+            velocidadMaxima_kmh: 'N/A',
+            instruccion: step.maneuver.instruction,
+            distanciaTotal: index === 0 ? totalDistance : null
+        };
+    });
+}
+
+function displayRoute(geometry) {
+    if (routeLayer) {
+        map.removeLayer(routeLayer);
+    }
+    routeLayer = L.geoJSON(geometry, {
+        style: {
+            color: '#006eff',
+            weight: 5,
+            opacity: 0.8
+        }
+    }).addTo(map);
+    map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+}
+
+function displayInstructions(steps) {
+    const stepsContainer = document.getElementById('routeSteps');
+    stepsContainer.innerHTML = '';
+    
+    if (!steps || steps.length === 0) {
+        stepsContainer.innerHTML = '<p>No hay instrucciones disponibles.</p>';
         return;
     }
-    
-    // Mostrar estado de carga
-    const calculateBtn = document.getElementById('calculateBtn');
-    const originalText = calculateBtn.textContent;
-    calculateBtn.textContent = '⏳ Calculando rutas...';
-    calculateBtn.disabled = true;
-    
-    // Limpiar rutas existentes
-    clearAllRoutes();
-    
-    try {
-        // Calcular ambas rutas en paralelo
-        const [bellmanResult, astarResult] = await Promise.allSettled([
-            fetchRoute('bellman', startLocation, endLocation),
-            fetchRoute('astar', startLocation, endLocation)
-        ]);
-        
-        let successCount = 0;
-        let errorMessages = [];
-        
-        // Procesar resultado de Bellman-Ford
-        if (bellmanResult.status === 'fulfilled') {
-            routeData.bellman = processApiRouteData(bellmanResult.value.routeData);
-            visualizeRoute('bellman', routeData.bellman, bellmanResult.value.totalTime);
-            successCount++;
-        } else {
-            errorMessages.push(`Bellman-Ford: ${bellmanResult.reason.message}`);
-        }
-        
-        // Procesar resultado de A*
-        if (astarResult.status === 'fulfilled') {
-            routeData.astar = processApiRouteData(astarResult.value.routeData);
-            visualizeRoute('astar', routeData.astar, astarResult.value.totalTime);
-            successCount++;
-        } else {
-            errorMessages.push(`A*: ${astarResult.reason.message}`);
-        }
-        
-        if (successCount > 0) {
-            // Mostrar panel de comparación
-            showRouteComparison();
-            
-            // Ajustar vista del mapa para mostrar ambas rutas
-            adjustMapView();
-            
-            // Seleccionar automáticamente la primera ruta disponible
-            if (routeData.bellman) {
-                selectRoute('bellman');
-            } else if (routeData.astar) {
-                selectRoute('astar');
-            }
-            
-            // Configurar botón de vista 3D inmediatamente después de calcular las rutas
-            const view3DBtn = document.getElementById('view3D');
-            if (view3DBtn) {
-                // Remover listeners anteriores
-                const newBtn = view3DBtn.cloneNode(true);
-                view3DBtn.parentNode.replaceChild(newBtn, view3DBtn);
-                
-                // Agregar nuevo listener
-                newBtn.addEventListener('click', () => {
-                    // Verificar que hay una ruta seleccionada
-                    if (!selectedRoute) {
-                        alert('Por favor selecciona una ruta primero antes de ver la simulación 3D.');
-                        return;
-                    }
-                    
-                    // Verificar que los datos estén guardados
-                    const savedData = sessionStorage.getItem('routeData');
-                    if (savedData) {
-                        console.log('✅ Datos de ruta guardados correctamente');
-                        console.log('🚀 Navegando a simulación 3D...');
-                        window.location.href = './threejsAnimation.html';
-                    } else {
-                        console.error('❌ Error: No se pudieron guardar los datos de ruta');
-                        alert('Error al preparar la simulación 3D. Por favor intenta de nuevo.');
-                    }
-                });
-            }
-            
-            showMessage(`✅ ${successCount} ruta(s) calculada(s) exitosamente!`, 'success');
-        } else {
-            showMessage(`❌ Error al calcular las rutas: ${errorMessages.join(', ')}`, 'error');
-        }
-        
-    } catch (error) {
-        console.error('Error general al calcular rutas:', error);
-        showMessage(`❌ Error general: ${error.message}`, 'error');
-    } finally {
-        // Restaurar botón
-        calculateBtn.textContent = originalText;
-        calculateBtn.disabled = false;
-    }
-}
 
-// Función para obtener datos de una ruta específica
-async function fetchRoute(routeType, startLocation, endLocation) {
-    const endpoint = routeConfig[routeType].endpoint;
-    
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            start_location: startLocation,
-            end_location: endLocation
-        })
+    steps.forEach(step => {
+        const stepDiv = document.createElement('div');
+        stepDiv.className = 'step';
+        
+        const header = document.createElement('div');
+        header.className = 'step-header';
+        header.textContent = step.maneuver.instruction;
+        
+        const details = document.createElement('div');
+        details.className = 'step-details';
+        const distance = (step.distance / 1000).toFixed(2);
+        const duration = Math.round(step.duration / 60);
+        details.textContent = `Distancia: ${distance} km, Duración: ${duration} min`;
+        
+        stepDiv.appendChild(header);
+        stepDiv.appendChild(details);
+        stepsContainer.appendChild(stepDiv);
     });
-    
-    if (!response.ok) {
-        throw new Error(`Error HTTP: ${response.status} - ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    const routeData = data["ruta"];
-    const totalTime = data["tiempo_estimado"];
-    
-    if (!routeData || routeData.length === 0) {
-        throw new Error('No se encontró una ruta válida entre las ubicaciones especificadas.');
-    }
-    
-    return { routeData, totalTime };
+
+    document.getElementById('routeInfo').style.display = 'block';
 }
 
-// Función para procesar datos de la API
-function processApiRouteData(apiData) {
-    return apiData.map(step => ({
-        paso: step.paso,
-        desde: step.desde,
-        hasta: step.hasta,
-        nombreCalle: step.nombreCalle,
-        tipoCalle: step.tipoCalle,
-        unidireccional: step.unidireccional,
-        distancia_metros: step.distancia_metros,
-        velocidadMaxima_kmh: step.velocidadMaxima_kmh,
-        instruccion: step.instruccion,
-        osmid: step.OSMID,
-        fromCoords: [step.fromLat, step.fromLng],
-        toCoords: [step.toLat, step.toLng]
-    }));
+function goBack() {
+    window.location.href = "home.html";
 }
-
-// Función para visualizar una ruta específica
-function visualizeRoute(routeType, routeData, totalTime) {
-    if (!routeData || routeData.length === 0) return;
-    
-    const config = routeConfig[routeType];
-    const coordinates = [];
-    
-    // Procesar coordenadas
-    routeData.forEach((step, index) => {
-        if (index === 0) {
-            coordinates.push(step.fromCoords);
-        }
-        coordinates.push(step.toCoords);
-    });
-    
-    // Crear polilínea de la ruta
-    const routeStyle = {
-        color: config.color,
-        weight: 5,
-        opacity: 0.7,
-        smoothFactor: 1
-    };
-    
-    currentRoutes[routeType] = L.polyline(coordinates, routeStyle).addTo(map);
-    
-    // Agregar marcadores solo para la primera ruta calculada
-    if (Object.keys(currentRoutes).filter(key => currentRoutes[key]).length === 1) {
-        const startMarker = L.marker(coordinates[0], {
-            icon: L.divIcon({
-                html: '🚩',
-                iconSize: [30, 30],
-                className: 'start-marker'
-            })
-        }).addTo(map).bindPopup(`<b>Inicio:</b><br>${routeData[0].desde}`);
-        
-        const endMarker = L.marker(coordinates[coordinates.length - 1], {
-            icon: L.divIcon({
-                html: '🏁',
-                iconSize: [30, 30],
-                className: 'end-marker'
-            })
-        }).addTo(map).bindPopup(`<b>Destino:</b><br>${routeData[routeData.length - 1].hasta}`);
-        
-        routeMarkers[routeType].push(startMarker, endMarker);
-    }
-    
-    // Almacenar tiempo estimado
-    currentRoutes[routeType].estimatedTime = totalTime;
-}
-
-// Función para limpiar ruta (mantener compatibilidad)
-function clearRoute() {
-    clearAllRoutes();
-}
-
-// Eventos del DOM
-document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('startLocation').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            calculateRoute();
-        }
-    });
-    
-    document.getElementById('endLocation').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            calculateRoute();
-        }
-    });
-    
-    document.getElementById('calculateBtn').addEventListener('click', calculateRoute);
-});
-
-// Evento para manejar clicks en el mapa
-map.on('click', function(e) {
-    console.log('Coordenadas:', e.latlng.lat, e.latlng.lng);
-});
